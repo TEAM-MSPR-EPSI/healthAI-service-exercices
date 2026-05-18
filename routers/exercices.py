@@ -1,0 +1,76 @@
+from fastapi import APIRouter, HTTPException
+from models.schemas import ExercicesRequest, FeedbackRequest
+from services.modele import predire_exercices
+from services.llm import generer_plan_exercices
+from services.user_profile import get_user_profile, get_user_equipment
+from db.mongo import get_db
+from datetime import datetime, timezone
+from bson import ObjectId
+import state
+
+router = APIRouter()
+
+@router.post("/recommander")
+async def recommander_exercices(request: ExercicesRequest):
+    user_profile = await get_user_profile(request.user_id)
+    if not user_profile:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    profile = request.model_dump()
+    if not profile.get("goal") and user_profile.get("goal"):
+        profile["goal"] = user_profile["goal"]
+    if not profile.get("equipment"):
+        profile["equipment"] = await get_user_equipment(request.user_id)
+
+    scored = predire_exercices(profile, main.exercices_cache, main.equipment_cache)
+
+    if not scored:
+        raise HTTPException(status_code=400, detail="Aucun exercice compatible avec ce profil")
+
+    plan = await generer_plan_exercices(profile, scored)
+
+    doc = {
+        "user_id": request.user_id,
+        "created_at": datetime.now(timezone.utc),
+        "input_profile": profile,
+        "exercices_scores": scored,
+        "plan_genere": plan,
+        "llm_provider": "gemini-1.5-flash",
+        "feedback": None
+    }
+
+    db = get_db()
+    result = await db.recommandations_exercices.insert_one(doc)
+
+    return {
+        "recommandation_id": str(result.inserted_id),
+        "exercices_scores": scored,
+        "plan_genere": plan
+    }
+
+@router.get("/historique/{user_id}")
+async def get_historique(user_id: int):
+    db = get_db()
+    cursor = db.recommandations_exercices.find(
+        {"user_id": user_id},
+        {"_id": 1, "created_at": 1, "input_profile": 1, "plan_genere": 1}
+    ).sort("created_at", -1).limit(10)
+    historique = await cursor.to_list(length=10)
+    for doc in historique:
+        doc["_id"] = str(doc["_id"])
+    return historique
+
+@router.post("/{recommandation_id}/feedback")
+async def ajouter_feedback(recommandation_id: str, feedback: FeedbackRequest):
+    db = get_db()
+    result = await db.recommandations_exercices.update_one(
+        {"_id": ObjectId(recommandation_id)},
+        {"$set": {"feedback": feedback.model_dump()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Recommandation introuvable")
+    return {"status": "feedback enregistré"}
+
+@router.get("/liste")
+async def liste_exercices():
+    return main.exercices_cache
