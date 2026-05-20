@@ -1,17 +1,42 @@
 from fastapi import APIRouter, HTTPException
 from models.schemas import ExercicesRequest, FeedbackRequest
-from services.modele import predire_exercices
+from services.modele import predire_exercices, entrainer_modele, MODEL_PATH
 from services.llm import generer_plan_exercices
-from services.user_profile import get_user_profile, get_user_equipment
+from services.user_profile import get_user_profile, get_user_equipment, get_all_exercises, get_all_equipment
 from db.mongo import get_db
 from datetime import datetime, timezone
 from bson import ObjectId
 import state
+import os
 
 router = APIRouter()
 
+@router.post("/entrainer")
+async def entrainer_modele_route():
+    exercices = await get_all_exercises()
+    equipment_list = await get_all_equipment()
+
+    if not exercices:
+        raise HTTPException(status_code=400, detail="Aucun exercice en base de données")
+
+    if os.path.exists(MODEL_PATH):
+        os.remove(MODEL_PATH)
+
+    entrainer_modele(exercices, equipment_list)
+    state.exercices_cache = exercices
+    state.equipment_cache = equipment_list
+
+    return {
+        "status": "Modèle entraîné avec succès",
+        "nb_exercices": len(exercices),
+        "nb_equipements": len(equipment_list)
+    }
+
 @router.post("/recommander")
 async def recommander_exercices(request: ExercicesRequest):
+    if not state.exercices_cache:
+        raise HTTPException(status_code=503, detail="Modèle non entraîné — appelez POST /exercices/entrainer d'abord")
+
     user_profile = await get_user_profile(request.user_id)
     if not user_profile:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -22,7 +47,7 @@ async def recommander_exercices(request: ExercicesRequest):
     if not profile.get("equipment"):
         profile["equipment"] = await get_user_equipment(request.user_id)
 
-    scored = predire_exercices(profile, main.exercices_cache, main.equipment_cache)
+    scored = predire_exercices(profile, state.exercices_cache, state.equipment_cache)
 
     if not scored:
         raise HTTPException(status_code=400, detail="Aucun exercice compatible avec ce profil")
@@ -73,4 +98,4 @@ async def ajouter_feedback(recommandation_id: str, feedback: FeedbackRequest):
 
 @router.get("/liste")
 async def liste_exercices():
-    return main.exercices_cache
+    return state.exercices_cache

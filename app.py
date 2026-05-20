@@ -14,12 +14,17 @@ async def lifespan(app: FastAPI):
     await connect()
     state.exercices_cache = await get_all_exercises()
     state.equipment_cache = await get_all_equipment()
-    charger_modele(state.exercices_cache, state.equipment_cache)
+
+    if state.exercices_cache:
+        charger_modele(state.exercices_cache, state.equipment_cache)
+    else:
+        print("Base vide au démarrage — appelez POST /exercices/entrainer après avoir alimenté la base")
+
     yield
     await disconnect()
 
 app = FastAPI(
-    title="HealthAI - Service de recommandation d'activités physiques",
+    title="HealthAI - Service de Recommandation d'Exercices",
     version="1.0.0",
     description="Moteur de recommandation d'activités physiques personnalisées",
     lifespan=lifespan
