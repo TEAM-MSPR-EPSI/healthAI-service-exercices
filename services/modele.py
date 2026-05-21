@@ -82,8 +82,10 @@ def entrainer_modele(exercices: list, equipment_list: list):
     modele.fit(X_train, y_train)
 
     y_pred = modele.predict(X_test)
-    noms = [ex["name"] for ex in exercices]
-    print(classification_report(y_test, y_pred, target_names=noms, zero_division=0))
+    # Obtenir les classes uniques présentes dans y_test
+    classes_uniques = sorted(np.unique(y_test))
+    noms = [exercices[i]["name"] if i < len(exercices) else f"Exercise_{i}" for i in classes_uniques]
+    print(classification_report(y_test, y_pred, labels=classes_uniques, target_names=noms, zero_division=0))
 
     joblib.dump(modele, MODEL_PATH)
     print(f"Modèle sauvegardé : {MODEL_PATH}")
