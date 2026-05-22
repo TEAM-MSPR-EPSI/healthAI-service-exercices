@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import traceback
 from contextlib import asynccontextmanager
 from routers import exercices
 from db.mongo import connect, disconnect
@@ -29,6 +31,13 @@ app = FastAPI(
     description="Moteur de recommandation d'activités physiques personnalisées",
     lifespan=lifespan
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": traceback.format_exc()}
+    )
 
 app.include_router(exercices.router, prefix="/exercices", tags=["exercices"])
 
