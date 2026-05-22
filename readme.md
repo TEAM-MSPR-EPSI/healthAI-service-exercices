@@ -72,7 +72,7 @@ Les logs doivent afficher dans l'ordre :
 
 ```
 healthAI-service-exercices/
-├── main.py                    # Point d'entrée FastAPI, initialisation au démarrage
+├── app.py                    # Point d'entrée FastAPI, initialisation au démarrage
 ├── state.py                   # Cache partagé (exercices, équipements)
 ├── routers/
 │   └── exercices.py           # Définition des routes de l'API
@@ -94,7 +94,7 @@ healthAI-service-exercices/
 
 ### 6.1 Initialisation au démarrage
 
-Au lancement du conteneur, `main.py` exécute dans l'ordre :
+Au lancement du conteneur, `app.py` exécute dans l'ordre :
 
 1. **Connexion MongoDB** via Motor (client async)
 2. **Chargement des exercices** disponible depuis PostgreSQL (`sport_exercise`)
