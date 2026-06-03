@@ -1,0 +1,6 @@
+.env
+
+modele_exercices.joblib
+
+__pycache__/
+**/__pycache__/
