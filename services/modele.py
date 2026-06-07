@@ -108,7 +108,8 @@ def predire_exercices(profile: dict, exercices: list, equipment_list: list) -> l
     for ex, score in exercices_avec_score:
         if any(lim in ex.get("limitations_incompatible", []) for lim in profile.get("limitations", [])):
             continue
-        if not any(eq in profile.get("equipment", []) for eq in ex.get("equipment", [])):
+        exercise_equipment = ex.get("equipment", [])
+        if exercise_equipment and not any(eq in profile.get("equipment", []) for eq in exercise_equipment):
             continue
         resultats.append({**ex, "score": round(float(score), 4)})
 
