@@ -42,8 +42,6 @@ async def recommander_exercices(request: ExercicesRequest):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
 
     profile = request.model_dump()
-    if not profile.get("goal") and user_profile.get("goal"):
-        profile["goal"] = user_profile["goal"]
     if not profile.get("equipment"):
         profile["equipment"] = await get_user_equipment(request.user_id)
 
