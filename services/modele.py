@@ -49,7 +49,16 @@ def generer_donnees_entrainement(exercices: list, equipment_list: list):
         level = LEVELS[level_key]
         sessions = np.random.randint(2, 6)
         duree = np.random.choice([30, 45, 60])
-        equipment = np.random.choice(equipment_list, size=np.random.randint(1, 4), replace=False).tolist()
+        max_equipment = min(3, len(equipment_list))
+        if max_equipment == 0:
+            equipment = []
+        else:
+            equipment_size = np.random.randint(1, max_equipment + 1)
+            equipment = np.random.choice(
+                equipment_list,
+                size=equipment_size,
+                replace=False
+            ).tolist()
         equipment_vec = [1 if eq in equipment else 0 for eq in equipment_list]
         profil_vec = [goal, level, sessions, duree] + equipment_vec
 
@@ -108,7 +117,8 @@ def predire_exercices(profile: dict, exercices: list, equipment_list: list) -> l
     for ex, score in exercices_avec_score:
         if any(lim in ex.get("limitations_incompatible", []) for lim in profile.get("limitations", [])):
             continue
-        if not any(eq in profile.get("equipment", []) for eq in ex.get("equipment", [])):
+        exercise_equipment = ex.get("equipment", [])
+        if exercise_equipment and not any(eq in profile.get("equipment", []) for eq in exercise_equipment):
             continue
         resultats.append({**ex, "score": round(float(score), 4)})
 
