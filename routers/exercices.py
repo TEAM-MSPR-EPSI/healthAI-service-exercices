@@ -50,7 +50,14 @@ async def recommander_exercices(request: ExercicesRequest):
     if not scored:
         raise HTTPException(status_code=400, detail="Aucun exercice compatible avec ce profil")
 
-    plan = await generer_plan_exercices(profile, scored)
+    try:
+        plan = await generer_plan_exercices(profile, scored)
+    except Exception as e:
+        print(f"--- ERREUR CRITIQUE GEMINI --- : {str(e)}")
+        raise HTTPException(
+            status_code=502, 
+            detail="Le service d'IA est indisponible ou vos quotas Google AI Studio sont épuisés. Veuillez réessayer ultérieurement."
+        )
 
     doc = {
         "user_id": request.user_id,
@@ -58,7 +65,7 @@ async def recommander_exercices(request: ExercicesRequest):
         "input_profile": profile,
         "exercices_scores": scored,
         "plan_genere": plan,
-        "llm_provider": "gemini-1.5-flash",
+        "llm_provider": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
         "feedback": None
     }
 

@@ -7,7 +7,7 @@
 Son rôle est de générer des programmes d'entraînement personnalisés en combinant deux approches complémentaires :
 
 - Un **modèle de machine learning** qui prédit les exercices les plus adaptés au profil de l'utilisateur
-- Un **modèle de langage** (Google Gemini) qui génère un plan d'entraînement structuré et lisible à partir des exercices sélectionnés
+- Un **modèle de langage** (via OpenRouter avec sélection dynamique des modèles gratuits) qui génère un plan d'entraînement structuré et lisible en texte brut à partir des exercices sélectionnés par le modèle de machine learning
 
 Le service est développé en **Python / FastAPI**, connecté à **PostgreSQL** (source de données utilisateurs et exercices) et à **MongoDB** (stockage des recommandations générées).
 
@@ -26,7 +26,7 @@ Le service est développé en **Python / FastAPI**, connecté à **PostgreSQL** 
                         │     └─▶ RandomForestClassifier   │
                         │                                  │
                         │  3. Génération plan textuel      │
-                        │     └─▶ Google Gemini API        │
+                        │     └─▶ OpenRouter API (Requests)│
                         │                                  │
                         │  4. Stockage recommandation      │
                         │     └─▶ MongoDB                  │
@@ -36,23 +36,29 @@ Le service est développé en **Python / FastAPI**, connecté à **PostgreSQL** 
 ## 3. Prérequis
 
 - Docker et Docker Compose installés
-- Une clé API Google Gemini (gratuite) — voir section 4
+- Une clé API OpenRouter (gratuite) — voir section 4
 - BDD PostgreSQL alimentée avec des données via l'ETL (tables `sport_exercise` et `sport_equipment` non vides)
 - MongoDB configuré dans le Docker Compose
 
 ## 4. Installation et démarrage
 
-### 4.1 Obtenir une clé API Gemini
+### 4.1 Obtenir une clé API OpenRouter
 
-1. Aller sur https://aistudio.google.com
-2. Se connecter avec un compte Google
-3. Cliquer sur **"Get API key"** → **"Create API key"**
-4. Copier la clé générée (commence par `AIza...`)
+1. Aller sur https://openrouter.ai
+2. Cliquer sur **"Login"** en haut à droite et se connecter via un compte Google ou GitHub (création instantanée).
+3. Aller dans la section **Keys** (ou sur https://openrouter.ai/keys).
+4. Cliquer sur **"Create Key"**, lui donner un nom (ex: `HealthAI`) et copier la clé générée (elle commence par `sk-or-v1-...`).
 
-Le modèle utilisé est `gemini-1.5-flash` : **gratuit**, limité à 15 requêtes/minute et 1500 requêtes/jour.
+Le service interroge dynamiquement OpenRouter pour utiliser le meilleur modèle **100 % gratuit** et actif du catalogue (ex: `meta-llama/llama-3.1-8b-instruct:free`).
 
 ### 4.2 Lancer le projet
 
+Ajoutez votre clé dans le fichier `.env` :
+```env
+OPENROUTER_API_KEY=sk-or-v1-...
+```
+
+Puis lancez le conteneur :
 ```bash
 docker compose up --build -d
 ```
@@ -74,11 +80,13 @@ Les logs doivent afficher dans l'ordre :
 healthAI-service-exercices/
 ├── app.py                    # Point d'entrée FastAPI, initialisation au démarrage
 ├── state.py                   # Cache partagé (exercices, équipements)
+├── readme.md                 # Documentation du service
+├── tests.py                  # Tests unitaires du service (Pytest)
 ├── routers/
 │   └── exercices.py           # Définition des routes de l'API
 ├── services/
 │   ├── modele.py              # Modèle ML + scoring
-│   ├── llm.py                 # Appel API Gemini
+│   ├── llm.py                 # Appel API OpenRouter (Modèles gratuits dynamiques)
 │   └── user_profile.py        # Requêtes PostgreSQL
 ├── models/
 │   └── schemas.py             # Schémas Pydantic (validation des données)
@@ -125,9 +133,10 @@ Prédiction ML (modèle)
 → retourne le top 8
         │
         ▼
-Génération du plan textuel (Google Gemini)
-→ reçoit le profil + les 8 exercices sélectionnés
-→ génère un programme semaine structuré en français
+Génération du plan textuel (OpenRouter)
+→ récupère dynamiquement un modèle gratuit actif
+→ transmet le profil + les 8 exercices sélectionnés
+→ génère un programme semaine structuré en texte brut
         │
         ▼
 Stockage dans MongoDB (collection recommandations_exercices)
@@ -203,7 +212,7 @@ Génère un programme d'entraînement personnalisé.
       "limitations_incompatible": ["shoulder"]
     }
   ],
-  "plan_genere": "Semaine 1 :\n\nLundi - Séance 1 (45 min)..."
+  "plan_genere": "LUNDI - SEANCE 1 (45 MIN)\n\nExercice 1 : Pompes\nSéries : 3\nRépétitions : 12\nRepos : 60s"
 }
 ```
 
@@ -220,7 +229,7 @@ Retourne les 10 dernières recommandations d'un utilisateur.
     "_id": "664f1a2b3c4d5e6f7a8b9c0d",
     "created_at": "2025-05-18T10:00:00Z",
     "input_profile": { ... },
-    "plan_genere": "Semaine 1 : ..."
+    "plan_genere": "LUNDI - SEANCE 1 : ..."
   }
 ]
 ```
@@ -281,8 +290,8 @@ Chaque document correspond à une recommandation générée :
       "limitations_incompatible": ["shoulder"]
     }
   ],
-  "plan_genere": "Semaine 1 :\n\nLundi - Séance cardio (45 min)...",
-  "llm_provider": "gemini-1.5-flash",
+  "plan_genere": "LUNDI - SEANCE CARDIO (45 MIN)\n\nExercice 1 : Pompes...",
+  "llm_provider": "meta-llama/llama-3.1-8b-instruct:free",
   "feedback": {
     "rating": 4,
     "comment": "Très bon programme"
@@ -296,8 +305,8 @@ Chaque document correspond à une recommandation générée :
 | `created_at` | datetime | Date et heure de génération |
 | `input_profile` | object | Profil utilisateur utilisé pour la recommandation |
 | `exercices_scores` | array | Exercices sélectionnés avec leur score de pertinence |
-| `plan_genere` | string | Plan d'entraînement généré par Gemini |
-| `llm_provider` | string | Modèle LLM utilisé (traçabilité) |
+| `plan_genere` | string | Plan d'entraînement généré par l'IA en texte brut |
+| `llm_provider` | string | Modèle LLM utilisé (traçabilité OpenRouter) |
 | `feedback` | object \| null | Feedback de l'utilisateur (null si absent) |
 
 ## 9. Modèle ML
@@ -341,11 +350,11 @@ Le modèle entraîné est sauvegardé dans `modele_exercices.joblib` via `joblib
 
 Les métriques de performance (précision, rappel, F1-score) sont affichées dans les logs du conteneur au moment de l'entraînement via `classification_report` de scikit-learn.
 
-## 10. Intégration Gemini
+## 10. Intégration OpenRouter
 
-### Rôle de Gemini
+### Rôle de l'IA
 
-Gemini intervient **après** la sélection des exercices par le modèle ML. Son rôle est uniquement de **générer le plan textuel** à partir des exercices déjà sélectionnés. Il ne choisit pas les exercices — cela évite les hallucinations.
+L'IA intervient **après** la sélection des exercices par le modèle ML. Son rôle est uniquement de **générer le plan textuel** à partir des exercices déjà sélectionnés. Il ne choisit pas les exercices — cela évite les hallucinations.
 
 ### Prompt utilisé
 
@@ -361,14 +370,17 @@ Profil utilisateur :
 
 Exercices sélectionnés : {noms_exercices}
 
+CONSIGNES DE FORMATAGE CRUCIALES :
+1. N'utilise ABSOLUMENT AUCUN formatage Markdown. 
+2. Interdiction totale d'utiliser des astérisques (*), des dièses (#), ou des tirets du bas (_).
+3. Rédige uniquement en TEXTE BRUT (Plain Text).
+4. Pour structurer ton texte, utilise uniquement des sauts de ligne simples ou doubles (Touches Entrée).
+5. Écris les titres des jours ou des séances en MAJUSCULES pour les faire ressortir.
+
 Génère un plan semaine clair avec pour chaque séance : exercices, séries, répétitions et temps de repos.
 Sois concis et pratique.
 ```
 
-### Limites du tier gratuit
+### Règles de formatage strictes (Texte Brut)
 
-| Limite | Valeur |
-|---|---|
-| Requêtes par minute | 15 |
-| Requêtes par jour | 1 500 |
-| Coût | 0 € |
+Pour garantir une compatibilité complète avec les composants d'affichage et l'intégration directe de chaînes textuelles au sein de l'application sans nécessiter de parseur tiers, tout formatage Markdown est formellement interdit à l'IA. La mise en page s'appuie exclusivement sur des sauts de ligne classiques et des balises sémantiques implicites (titres écrits en MAJUSCULES). Le micro-service sélectionne dynamiquement un modèle gratuit actif lors de l'appel pour assurer la continuité opérationnelle.
